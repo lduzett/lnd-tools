@@ -1252,8 +1252,19 @@
   @media (max-width: 768px) {
     header { padding: 1rem 1.5rem; }
     .content { padding: 1.5rem; }
-    .tab-nav { padding: 0 1.5rem; }
     .dashboard-grid { grid-template-columns: 1fr; }
+    .tab-nav {
+      padding: 0;
+      overflow-x: hidden;
+    }
+    .tab-btn {
+      font-size: 0.65rem;
+      padding: 0.85rem 0.5rem;
+      letter-spacing: 0.03em;
+      flex: 1;
+      text-align: center;
+      white-space: nowrap;
+    }
   }
 
   /* Animations */
@@ -1851,7 +1862,14 @@ function launchApp() {
   renderJournal();
   renderSettings();
   if (state.pushEnabled && Notification.permission === 'granted') schedulePushReminder();
-  setTimeout(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, 0);
+  // Check if today is the user's chosen reminder day — send weekly reminder email
+  setTimeout(checkAndSendWeeklyReminder, 2000);
+  // iOS needs a proper delay after DOM changes before scroll works
+  setTimeout(() => {
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    window.scrollTo(0, 0);
+  }, 100);
 }
 
 // ─────────────────────────────────────────────
@@ -2851,6 +2869,56 @@ function downloadCalendarReminder() {
 }
 
 // ─────────────────────────────────────────────
+// WEEKLY REMINDER EMAIL
+// ─────────────────────────────────────────────
+function checkAndSendWeeklyReminder() {
+  // Only send if: email set, reminder day set, and today matches
+  const email = state.reminderEmail;
+  if (!email) return;
+
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const todayName = days[new Date().getDay()];
+  const reminderDay = state.reminderDay || 'Monday';
+  if (todayName !== reminderDay) return;
+
+  // Throttle: only send once per day per reminder day
+  const lastSentKey = 'nf_reminder_sent_' + state.pin;
+  const lastSent = localStorage.getItem(lastSentKey);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  if (lastSent === todayStr) return; // already sent today
+
+  // Mark as sent before sending (avoid duplicate sends)
+  localStorage.setItem(lastSentKey, todayStr);
+
+  // Build reminder email params
+  const weekCount = Object.keys(state.weeks || {}).length;
+  const nextWeek = state.currentWeek || (weekCount + 1);
+  const backup = { version: 1, exportedAt: new Date().toISOString(), appName: 'NourishForward', state: state };
+  const templateParams = {
+    to_email:    email,
+    to_name:     state.pin || 'Tracker Member',
+    date:        todayStr,
+    week_count:  weekCount,
+    backup_data: JSON.stringify(backup),
+    restore_url: window.location.href,
+    subject:     'Time to log Week ' + nextWeek + ' — Nourish Forward',
+    message:     'Hi! This is your weekly reminder to log your symptoms in Nourish Forward. Open the app below and check in for Week ' + nextWeek + '. This email also contains your latest backup so your data is always safe.',
+  };
+
+  if (typeof emailjs === 'undefined') return;
+  if (EMAILJS_PUBLIC_KEY === 'YOUR_PUBLIC_KEY') return;
+
+  emailjs.init(EMAILJS_PUBLIC_KEY);
+  emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams)
+    .then(() => {
+      showToast('📧 Weekly reminder sent to ' + email);
+    })
+    .catch((err) => {
+      console.warn('Weekly reminder email failed:', err);
+    });
+}
+
+// ─────────────────────────────────────────────
 // EMAIL BACKUP
 // ─────────────────────────────────────────────
 function saveBackupEmail() {
@@ -3288,12 +3356,17 @@ function drawShareCanvas(canvas, loggedWeeks, onDone) {
   const overallPct = firstAvg ? Math.round(((firstAvg - lastAvg) / firstAvg) * 100) : 0;
   const W = 1080;
   // Dynamic height: header ~530px + each symptom row 72px + footer 160px + padding
-  const symCount = state.symptoms.filter(sym => {
+  // Pre-calculate symptom data BEFORE setting canvas size to avoid mid-draw resize wipe (kills mobile)
+  const symData_pre = state.symptoms.map((sym) => {
     const base = state.weeks[loggedWeeks[0]]?.scores[sym.id];
     const latest = state.weeks[loggedWeeks[loggedWeeks.length-1]]?.scores[sym.id];
-    return base && latest;
-  }).length;
-  const H = Math.max(1350, 530 + symCount * 78 + 200);
+    if (!base || !latest) return null;
+    const pct = Math.round(((base - latest) / base) * 100);
+    return { sym, base, latest, pct };
+  }).filter(Boolean);
+  const symCount = symData_pre.length;
+  // barStartY = ~559, barRowH=78, footer=220
+  const H = Math.max(1350, 559 + symCount * 78 + 220);
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
@@ -3382,36 +3455,13 @@ function drawShareCanvas(canvas, loggedWeeks, onDone) {
     ctx.fillText('Symptom-by-Symptom Breakdown', 80, barsHeaderY);
 
     const BAR_COLORS = ['#8c3839','#da7073','#dda83f','#2b4743','#3d6b65','#cedeeb','#ffd3db','#8c3839','#da7073','#dda83f'];
-    const symData = state.symptoms.map((sym) => {
-      const base = state.weeks[firstWeek]?.scores[sym.id];
-      const latest = state.weeks[lastWeek]?.scores[sym.id];
-      if (!base || !latest) return null;
-      const pct = Math.round(((base - latest) / base) * 100);
-      return { sym, base, latest, pct };
-    }).filter(Boolean);
+    const symData = symData_pre; // Pre-calculated before canvas sizing to avoid resize wipe
 
     const barStartY = barsHeaderY + 28;
     const barRowH = 78;
     const barAreaW = W - 160;
 
-    // Recalculate true needed height and resize canvas if necessary
-    const trueH = Math.max(H, barStartY + symData.length * barRowH + 220);
-    if (trueH > H) {
-      canvas.height = trueH;
-      // Redraw background after resize
-      const bgGrad2 = ctx.createLinearGradient(0, 0, W, trueH);
-      bgGrad2.addColorStop(0, '#f3f2ee');
-      bgGrad2.addColorStop(0.5, '#fdf9f6');
-      bgGrad2.addColorStop(1, '#f3f2ee');
-      ctx.fillStyle = bgGrad2;
-      ctx.fillRect(0, 0, W, trueH);
-      ctx.fillStyle = 'rgba(140,56,57,0.04)';
-      for (let x = 30; x < W; x += 50) {
-        for (let y = 30; y < trueH; y += 50) {
-          ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-    }
+    // Height pre-calculated above — no mid-draw resize needed
 
     symData.forEach((d, i) => {
       const y = barStartY + i * barRowH;
@@ -3443,7 +3493,7 @@ function drawShareCanvas(canvas, loggedWeeks, onDone) {
     });
 
     // ── BOTTOM FOOTER ──
-    const footerY = Math.max(barStartY + symData.length * barRowH + 40, trueH - 140);
+    const footerY = Math.max(barStartY + symData.length * barRowH + 40, H - 140);
     ctx.fillStyle = 'rgba(0,0,0,0.06)';
     ctx.fillRect(0, footerY, W, 1);
 
@@ -3462,7 +3512,7 @@ function drawShareCanvas(canvas, loggedWeeks, onDone) {
     botGrad.addColorStop(0.7, '#dda83f');
     botGrad.addColorStop(1, '#2b4743');
     ctx.fillStyle = botGrad;
-    ctx.fillRect(0, trueH - 14, W, 14);
+    ctx.fillRect(0, H - 14, W, 14);
 
     // Invoke callback with completed canvas
     if (typeof onDone === 'function') onDone(canvas);
