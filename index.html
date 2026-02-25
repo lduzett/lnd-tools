@@ -1600,7 +1600,7 @@
               style="padding:0.5rem 0.75rem;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:0.82rem;background:var(--cream);outline:none;">
           </div>
           <div style="background:var(--cream);border:1.5px solid var(--border);border-radius:8px;padding:0.8rem 1rem;font-size:0.8rem;color:var(--stone);">
-            You can set up reminders in the next step — choose push notifications (automatic, no email needed) or add a recurring calendar event.
+            After your first check-in, we'll walk you through setting up reminders so you never miss a week.
           </div>
         </div>
       </div>
@@ -2197,6 +2197,13 @@ function saveWeek() {
 
   showToast('✓ Week ' + weekNum + ' saved!');
 
+  // After Week 1, show reminder setup modal (only once)
+  const reminderShown = localStorage.getItem('nf_reminder_modal_shown_' + state.pin);
+  if (weekNum === 1 && !reminderShown) {
+    localStorage.setItem('nf_reminder_modal_shown_' + state.pin, '1');
+    setTimeout(showReminderModal, 800);
+  }
+
   // Auto-send backup email if they have one set
   if (state.reminderEmail) {
     setTimeout(() => sendEmailBackup(), 1500); // slight delay so toast shows first
@@ -2518,47 +2525,6 @@ function renderSettings() {
   const reminderTime = state.reminderTime || '09:00';
   el.innerHTML = `
     <div class="setup-card">
-      <h2 style="font-family:'Suwannaphum','Cormorant Garamond',serif;color:var(--red-dark);">Tracked Symptoms</h2>
-      <p class="subtitle">Add or remove symptoms from your tracking list. Changes affect future check-ins (past data is preserved).</p>
-      <div style="margin-bottom:1rem;">
-        <p style="font-size:0.8rem;color:var(--stone);margin-bottom:0.5rem;font-weight:600;">Currently tracking (tap ✕ to remove):</p>
-        <div id="settings-active-symptoms" style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1rem;">
-          ${state.symptoms.map((s) => `
-            <div style="display:flex;align-items:center;gap:0.4rem;background:var(--pink-pale);border:1.5px solid var(--pink-mid);border-radius:20px;padding:0.35rem 0.7rem;font-size:0.8rem;">
-              <span>${s.icon}</span>
-              <span>${s.name}${s.custom ? ' <em style="font-size:0.7rem;color:var(--stone);">(custom)</em>' : ''}</span>
-              <button onclick="removeSettingSymptom('${s.id}')" style="background:none;border:none;cursor:pointer;color:var(--stone);font-size:0.85rem;padding:0 0 0 0.2rem;line-height:1;">✕</button>
-            </div>
-          `).join('')}
-        </div>
-        <p style="font-size:0.8rem;color:var(--stone);margin-bottom:0.5rem;font-weight:600;">Add from preset list:</p>
-        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">
-          ${PRESET_SYMPTOMS.filter(p => !state.symptoms.find(s => s.id === p.id)).map(p => `
-            <div onclick="addSettingSymptom('${p.id}')" style="display:flex;align-items:center;gap:0.4rem;background:var(--cream);border:1.5px dashed var(--border);border-radius:20px;padding:0.35rem 0.7rem;font-size:0.8rem;cursor:pointer;" title="Add ${p.name}">
-              <span>${p.icon}</span>
-              <span>${p.name}</span>
-              <span style="color:var(--green-dark);font-weight:600;">+</span>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    </div>
-    <div class="setup-card">
-      <h2 style="font-family:'Suwannaphum','Cormorant Garamond',serif;color:var(--red-dark);">Add a Custom Symptom</h2>
-      <p class="subtitle">Track something not in the preset list — type it in and pick an icon.</p>
-      <div style="display:flex;flex-direction:column;gap:0.75rem;max-width:420px;">
-        <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
-          <select id="custom-icon-picker" style="padding:0.55rem 0.6rem;border:1.5px solid var(--border);border-radius:8px;font-size:1.1rem;background:var(--cream);outline:none;width:68px;">
-            ${ ['🔵','⭕','🟡','🟠','🟣','💜','💛','🩷','🩶','🫀','💊','💤','🧠','🦷','👁️','🦻','💪','🦵','🌿','⚡'].map(e => '<option value="'+e+'">'+e+'</option>').join('') }
-          </select>
-          <input type="text" id="custom-symptom-name" placeholder="e.g. Ear ringing, Dry eyes…" maxlength="40"
-            style="flex:1;min-width:160px;padding:0.6rem 0.9rem;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:0.85rem;background:var(--cream);outline:none;">
-          <button class="btn btn-primary btn-sm" onclick="addCustomSettingSymptom()" style="white-space:nowrap;">+ Add</button>
-        </div>
-        <div id="custom-symptom-error" style="font-size:0.78rem;color:var(--red-dark);display:none;"></div>
-      </div>
-    </div>
-    <div class="setup-card">
       <h2 style="font-family:'Suwannaphum','Cormorant Garamond',serif;color:var(--red-dark);">Weekly Reminders</h2>
       <p class="subtitle">Choose your reminder day and time, then enable push notifications or add a recurring calendar event.</p>
       <div style="display:flex;flex-direction:column;gap:1rem;max-width:460px;">
@@ -2601,6 +2567,47 @@ function renderSettings() {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+    <div class="setup-card">
+      <h2 style="font-family:'Suwannaphum','Cormorant Garamond',serif;color:var(--red-dark);">Tracked Symptoms</h2>
+      <p class="subtitle">Add or remove symptoms from your tracking list. Changes affect future check-ins (past data is preserved).</p>
+      <div style="margin-bottom:1rem;">
+        <p style="font-size:0.8rem;color:var(--stone);margin-bottom:0.5rem;font-weight:600;">Currently tracking (tap ✕ to remove):</p>
+        <div id="settings-active-symptoms" style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1rem;">
+          ${state.symptoms.map((s) => `
+            <div style="display:flex;align-items:center;gap:0.4rem;background:var(--pink-pale);border:1.5px solid var(--pink-mid);border-radius:20px;padding:0.35rem 0.7rem;font-size:0.8rem;">
+              <span>${s.icon}</span>
+              <span>${s.name}${s.custom ? ' <em style="font-size:0.7rem;color:var(--stone);">(custom)</em>' : ''}</span>
+              <button onclick="removeSettingSymptom('${s.id}')" style="background:none;border:none;cursor:pointer;color:var(--stone);font-size:0.85rem;padding:0 0 0 0.2rem;line-height:1;">✕</button>
+            </div>
+          `).join('')}
+        </div>
+        <p style="font-size:0.8rem;color:var(--stone);margin-bottom:0.5rem;font-weight:600;">Add from preset list:</p>
+        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">
+          ${PRESET_SYMPTOMS.filter(p => !state.symptoms.find(s => s.id === p.id)).map(p => `
+            <div onclick="addSettingSymptom('${p.id}')" style="display:flex;align-items:center;gap:0.4rem;background:var(--cream);border:1.5px dashed var(--border);border-radius:20px;padding:0.35rem 0.7rem;font-size:0.8rem;cursor:pointer;" title="Add ${p.name}">
+              <span>${p.icon}</span>
+              <span>${p.name}</span>
+              <span style="color:var(--green-dark);font-weight:600;">+</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="setup-card">
+      <h2 style="font-family:'Suwannaphum','Cormorant Garamond',serif;color:var(--red-dark);">Add a Custom Symptom</h2>
+      <p class="subtitle">Track something not in the preset list — type it in and pick an icon.</p>
+      <div style="display:flex;flex-direction:column;gap:0.75rem;max-width:420px;">
+        <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+          <select id="custom-icon-picker" style="padding:0.55rem 0.6rem;border:1.5px solid var(--border);border-radius:8px;font-size:1.1rem;background:var(--cream);outline:none;width:68px;">
+            ${ ['🔵','⭕','🟡','🟠','🟣','💜','💛','🩷','🩶','🫀','💊','💤','🧠','🦷','👁️','🦻','💪','🦵','🌿','⚡'].map(e => '<option value="'+e+'">'+e+'</option>').join('') }
+          </select>
+          <input type="text" id="custom-symptom-name" placeholder="e.g. Ear ringing, Dry eyes…" maxlength="40"
+            style="flex:1;min-width:160px;padding:0.6rem 0.9rem;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:0.85rem;background:var(--cream);outline:none;">
+          <button class="btn btn-primary btn-sm" onclick="addCustomSettingSymptom()" style="white-space:nowrap;">+ Add</button>
+        </div>
+        <div id="custom-symptom-error" style="font-size:0.78rem;color:var(--red-dark);display:none;"></div>
       </div>
     </div>
     <div class="setup-card">
@@ -3540,6 +3547,66 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 // ─────────────────────────────────────────────
+// REMINDER MODAL (shown after Week 1)
+// ─────────────────────────────────────────────
+function showReminderModal() {
+  const modal = document.getElementById('reminder-modal');
+  if (!modal) return;
+  // Pre-fill with existing values
+  const dayEl = document.getElementById('modal-reminder-day');
+  const timeEl = document.getElementById('modal-reminder-time');
+  if (dayEl && state.reminderDay) dayEl.value = state.reminderDay;
+  if (timeEl && state.reminderTime) timeEl.value = state.reminderTime;
+  // Update push status
+  updateModalPushStatus();
+  modal.style.display = 'flex';
+}
+
+function dismissReminderModal() {
+  // Save the chosen day/time before closing
+  const day = document.getElementById('modal-reminder-day')?.value;
+  const time = document.getElementById('modal-reminder-time')?.value;
+  if (day) state.reminderDay = day;
+  if (time) state.reminderTime = time;
+  saveState();
+  const modal = document.getElementById('reminder-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function updateModalPushStatus() {
+  const statusEl = document.getElementById('modal-push-status');
+  const btn = document.getElementById('modal-push-btn');
+  if (!statusEl || !btn) return;
+  if (Notification.permission === 'granted' && state.pushEnabled) {
+    statusEl.innerHTML = '<span style="color:var(--green-dark);">✓ Push notifications are enabled</span>';
+    btn.textContent = 'Enabled ✓';
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+  } else if (Notification.permission === 'denied') {
+    statusEl.innerHTML = '<span style="color:var(--red-dark);">Notifications blocked — enable in phone Settings > Safari</span>';
+    btn.style.display = 'none';
+  } else {
+    statusEl.innerHTML = '';
+    btn.textContent = 'Enable Push Notifications';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  }
+}
+
+function enablePushFromModal() {
+  // Save day/time first
+  const day = document.getElementById('modal-reminder-day')?.value;
+  const time = document.getElementById('modal-reminder-time')?.value;
+  if (day) state.reminderDay = day;
+  if (time) state.reminderTime = time;
+  saveState();
+  // Request permission
+  requestPushPermission();
+  // Update status after a moment
+  setTimeout(updateModalPushStatus, 1500);
+}
+
+// ─────────────────────────────────────────────
 // INSTALL BANNER
 // ─────────────────────────────────────────────
 function showInstallBanner() {
@@ -3617,6 +3684,51 @@ function downloadGraphic() {
 
 </script>
 </div><!-- /.app -->
+
+  <!-- REMINDER SETUP MODAL (shown after Week 1 save) -->
+  <div id="reminder-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(27,46,43,0.55); align-items:flex-end; justify-content:center; padding:1rem;">
+    <div style="background:white; border-radius:20px 20px 16px 16px; max-width:480px; width:100%; padding:2rem 1.75rem 1.75rem; box-shadow:0 -4px 40px rgba(0,0,0,0.18); position:relative;">
+      <button onclick="dismissReminderModal()" style="position:absolute;top:1rem;right:1rem;background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--stone);">✕</button>
+      <div style="font-size:2.5rem; margin-bottom:0.75rem; text-align:center;">🎉</div>
+      <h3 style="font-family:'Cormorant Garamond',serif; font-size:1.5rem; font-weight:400; color:var(--dark); margin-bottom:0.4rem; text-align:center;">Week 1 logged!</h3>
+      <p style="font-size:0.85rem; color:var(--stone); text-align:center; margin-bottom:1.25rem; line-height:1.6;">Set up a weekly reminder so you never forget to check in. You can always change this in Settings.</p>
+
+      <div style="display:flex;flex-direction:column;gap:0.75rem;margin-bottom:1.25rem;">
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end;">
+          <div style="flex:1;min-width:130px;">
+            <label style="font-size:0.78rem;color:var(--stone);display:block;margin-bottom:0.3rem;">Remind me every</label>
+            <select id="modal-reminder-day" style="width:100%;padding:0.65rem 1rem;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:0.85rem;background:var(--cream);outline:none;">
+              <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
+              <option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option>
+            </select>
+          </div>
+          <div style="flex:1;min-width:110px;">
+            <label style="font-size:0.78rem;color:var(--stone);display:block;margin-bottom:0.3rem;">At</label>
+            <input type="time" id="modal-reminder-time" value="09:00" style="width:100%;padding:0.65rem 1rem;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:0.85rem;background:var(--cream);outline:none;">
+          </div>
+        </div>
+
+        <div style="background:var(--pink-pale);border:1.5px solid var(--pink-mid);border-radius:12px;padding:1rem 1.1rem;">
+          <div style="font-weight:600;font-size:0.88rem;margin-bottom:0.4rem;">🔔 Push Notifications <span style="font-size:0.72rem;color:var(--green-dark);background:#e8f5e9;padding:0.15rem 0.5rem;border-radius:10px;margin-left:0.3rem;">Recommended</span></div>
+          <p style="font-size:0.78rem;color:var(--stone);margin:0 0 0.7rem;line-height:1.5;">Get a notification at your chosen time — even when the app is closed.</p>
+          <div id="modal-push-status" style="font-size:0.78rem;margin-bottom:0.5rem;"></div>
+          <button id="modal-push-btn" class="btn btn-primary btn-sm" onclick="enablePushFromModal()" style="font-size:0.8rem;">Enable Push Notifications</button>
+        </div>
+
+        <div style="background:var(--cream);border:1.5px solid var(--border);border-radius:12px;padding:1rem 1.1rem;">
+          <div style="font-weight:600;font-size:0.88rem;margin-bottom:0.4rem;">📅 Add to Calendar</div>
+          <p style="font-size:0.78rem;color:var(--stone);margin:0 0 0.7rem;line-height:1.5;">Download a recurring calendar event instead.</p>
+          <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+            <button class="btn btn-outline btn-sm" onclick="addToGoogleCalendar()" style="font-size:0.8rem;">📅 Google Calendar</button>
+            <button class="btn btn-outline btn-sm" onclick="downloadCalendarReminder()" style="font-size:0.8rem;">📥 Apple / Outlook</button>
+          </div>
+        </div>
+      </div>
+
+      <button onclick="dismissReminderModal()" style="width:100%;padding:0.8rem;background:none;border:1.5px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:0.85rem;color:var(--stone);cursor:pointer;">Skip for now</button>
+    </div>
+  </div>
+
   <!-- INSTALL BANNER MODAL -->
   <div id="install-banner" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(27,46,43,0.55); align-items:flex-end; justify-content:center; padding:1rem;">
     <div style="background:white; border-radius:20px 20px 16px 16px; max-width:480px; width:100%; padding:2rem 1.75rem 1.75rem; box-shadow:0 -4px 40px rgba(0,0,0,0.18); position:relative;">
